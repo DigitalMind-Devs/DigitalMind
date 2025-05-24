@@ -1,0 +1,24 @@
+---
+const services = [
+  "Reparación y mantenimiento de computadoras",
+  "Instalación de software y sistemas",
+  "Cursos de Ciberseguridad y Ethical Hacking",
+  "Creación de páginas web y sistemas de facturación",
+  "Bases de datos: análisis, diseño y optimización",
+  "Instalación de redes y soporte técnico"
+];
+---
+
+<section id="servicios" class="py-16 text-center animate-on-scroll opacity-0 translate-y-5 transition-all duration-600">
+  <div class="w-[90%] max-w-[1200px] mx-auto">
+    <h2 class="text-[2rem] mb-10 font-bold text-[#00ff99]">Servicios</h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {services.map(service => (
+        <div class="service-card bg-[#1a1a2e] p-7 rounded-[10px] shadow-lg opacity-0 translate-y-5 transition-all duration-600 hover:bg-[#162447]">
+          {service}
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

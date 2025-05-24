@@ -1,11 +1,72 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
-
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Services from "../components/Services.astro";
+import About from "../components/About.astro";
+import Contact from "../components/Contact.astro";
+import Footer from "../components/Footer.astro";
+import Formation from "../components/Formation.astro";
+import Hero from "../components/Hero.astro";
 ---
 
 <Layout>
-	<Welcome />
+  <Header />
+  <Hero />
+  <Services />
+  <Formation />
+  <About />
+  <Contact />
+  <Footer />
+
+  <script>
+    // Animation observer setup
+    document.addEventListener("DOMContentLoaded", () => {
+      // Initial animation for hero section
+      const heroElement = document.querySelector(".hero-section");
+      if (heroElement) {
+        setTimeout(() => {
+          heroElement.classList.remove("opacity-0", "translate-y-5");
+          heroElement.classList.add("opacity-100", "translate-y-0");
+        }, 100);
+      }
+
+      // Configure intersection observer for scroll animations
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              // Add animation classes when element is in view
+              entry.target.classList.remove("opacity-0", "translate-y-5");
+              entry.target.classList.add("opacity-100", "translate-y-0");
+
+              // Animate child elements with delay
+              const animatedChildren =
+                entry.target.querySelectorAll(".animate-child");
+              if (animatedChildren.length > 0) {
+                animatedChildren.forEach((child, index) => {
+                  setTimeout(
+                    () => {
+                      child.classList.remove("opacity-0", "translate-y-5");
+                      child.classList.add("opacity-100", "translate-y-0");
+                    },
+                    100 * (index + 1)
+                  );
+                });
+              }
+            }
+          });
+        },
+        {
+          threshold: 0.1,
+          rootMargin: "-100px 0px",
+        }
+      );
+
+      // Observe all sections and cards
+      const elementsToAnimate = document.querySelectorAll(
+        ".animate-on-scroll, .service-card"
+      );
+      elementsToAnimate.forEach((el) => observer.observe(el));
+    });
+  </script>
 </Layout>

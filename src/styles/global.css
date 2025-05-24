@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .translate-y-5 {
+    transform: translateY(20px);
+  }
+  
+  .duration-600 {
+    transition-duration: 600ms;
+  }
+  
+  /* Clases de visibilidad para las animaciones */
+  .opacity-0 {
+    opacity: 0;
+  }
+  
+  .opacity-100 {
+    opacity: 1;
+  }
+}
+
+
+.transition-all {
+  transition-property: all;
+}
+
+.duration-600 {
+  transition-duration: 600ms;
+}
+
+.ease-out {
+  transition-timing-function: ease-out;
+}
+
+.opacity-0 {
+  opacity: 0;
+}
+
+.opacity-100 {
+  opacity: 1;
+}
+
+.translate-y-5 {
+  transform: translateY(20px);
+}
+
+.translate-y-0 {
+  transform: translateY(0);
+}
