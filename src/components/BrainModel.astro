@@ -1,0 +1,663 @@
+---
+// Props for the Brain Model component
+interface Props {
+  containerId: string;
+  height: string;
+  width: string;
+  position?: "absolute" | "relative";
+}
+
+const { 
+  containerId, 
+  height = "300px",
+  width = "300px",
+  position = "relative",
+} = Astro.props;
+---
+
+<div 
+  id={containerId} 
+  class="brain-model"
+  style={`height: ${height}; width: ${width}; position: ${position};`}>
+</div>
+
+<script >
+import type { Mesh, SphereGeometry, MeshBasicMaterial } from 'three';
+
+import type { Line, BufferGeometry, NormalBufferAttributes, LineBasicMaterial, Object3DEventMap } from 'three';
+
+
+
+  document.addEventListener('DOMContentLoaded', async function setupBrain() {
+    try {
+        const colorScheme = "blueViolet"
+
+      // Get container from DOM using data attribute or class
+      const container = document.querySelector('.brain-model');
+      if (!container) {
+        console.error('Brain model container not found');
+        return;
+      }
+
+      const containerId = container.id;
+      if (!containerId) {
+        console.error('Brain model container ID not found');
+        return;
+      }
+      
+      console.log('Setting up brain model in container:', containerId);
+      
+      const THREE = await import('three');
+      
+      // Clear any existing canvas
+      const existingCanvas = container.querySelector('canvas');
+      if (existingCanvas) {
+        existingCanvas.remove();
+      }
+      
+      // Create scene
+      const scene = new THREE.Scene();
+      
+      // Create camera
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        container.clientWidth / container.clientHeight,
+        0.1,
+        1000      );
+      camera.position.z = 1.5;
+      
+      // Create renderer
+      const renderer = new THREE.WebGLRenderer({ 
+        antialias: true,
+        alpha: true 
+      });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setClearColor(0x000000, 0); // Transparent background
+      container.appendChild(renderer.domElement);
+
+      // Select color palette based on prop
+      const getColorScheme = (scheme: string) => {
+        switch(scheme) {
+          case 'blueViolet':
+            return {
+              leftHemisphere: 0xC850C0, // Purple
+              rightHemisphere: 0x4BC0C8, // Blue
+              connections: 0xFFFFFF, // White
+              stem: 0x79CBCA, // Light blue
+              highlights: 0xFFEA00 // Yellow
+            };
+          case 'multicolor':
+            return {
+              leftHemisphere: 0xFF6B6B, // Red
+              rightHemisphere: 0x4ECDC4, // Teal
+              connections: 0xFFD166, // Yellow
+              stem: 0x6A0572, // Purple
+              highlights: 0xFCF6BD // Light yellow
+            };
+          case 'singleBlue':
+            return {
+              leftHemisphere: 0x00A8E8, // Mid blue
+              rightHemisphere: 0x00A8E8, // Same blue
+              connections: 0xFFFFFF, // White
+              stem: 0x0096C7, // Darker blue
+              highlights: 0xAAF0FF // Light blue
+            };
+          case 'monochrome':
+            return {
+              leftHemisphere: 0x333333, // Dark gray
+              rightHemisphere: 0x333333, // Dark gray
+              connections: 0xFFFFFF, // White
+              stem: 0x222222, // Darker gray
+              highlights: 0x999999 // Light gray
+            };
+          default:
+            return {
+              leftHemisphere: 0xC850C0, // Purple
+              rightHemisphere: 0x4BC0C8, // Blue
+              connections: 0xFFFFFF, // White
+              stem: 0x79CBCA, // Light blue
+              highlights: 0xFFEA00 // Yellow
+            };
+        }
+      };
+      
+      const colors = getColorScheme(colorScheme);
+      
+      // Create a realistic brain using anatomical structure
+      const brainGroup = new THREE.Group();
+      
+      // Define anatomical structure
+      const brainStructure = {        // Left and right hemispheres (symmetrical but mirrored)
+        leftHemisphere: { 
+          center: { x: -0.4, y: 0.2, z: 0 }, 
+          radius: 0.8, 
+          density: 120, 
+          color: colors.leftHemisphere 
+        },
+        rightHemisphere: { 
+          center: { x: 0.4, y: 0.2, z: 0 }, 
+          radius: 0.8, 
+          density: 120, 
+          color: colors.rightHemisphere 
+        },        // Brain stem connecting to the bottom
+        brainStem: { 
+          center: { x: 0, y: -0.6, z: 0 }, 
+          radius: 0.25, 
+          density: 40, 
+          color: colors.stem 
+        },
+        // Cerebellum at the back bottom
+        cerebellum: { 
+          center: { x: 0, y: -0.3, z: -0.4 }, 
+          radius: 0.4, 
+          density: 60, 
+          color: colors.stem 
+        },
+        // Important junction nodes between key regions
+        junctions: [
+          { x: 0, y: 0, z: 0, radius: 0.25, color: colors.highlights },
+          { x: 0, y: -0.3, z: 0, radius: 0.2, color: colors.highlights }
+        ]
+      };
+      
+      interface BrainNode {
+        mesh: Mesh<SphereGeometry, MeshBasicMaterial, Object3DEventMap>;
+        position: { x: number; y: number; z: number; };
+        region: string;
+        activity: number;
+        isSurface?: boolean;
+        isJunction?: boolean;
+      }
+      
+      const allNodes: BrainNode[] = [];
+      
+      // Create the outline/surface nodes of the brain
+      function createBrainSurface() {
+        // Helper function to create brain surface with specific shape
+        function generateHemisphereNodes(side: string, hemisphereData: { center?: { x: number; y: number; z: number; } | { x: number; y: number; z: number; }; radius?: number; density: any; color: any; }) {
+          const signX = side === 'left' ? -1 : 1;
+          const nodes = [];
+          
+          // Create nodes following brain shape
+          for (let i = 0; i < hemisphereData.density; i++) {
+            // Distribute points on surface
+            const phi = Math.random() * Math.PI * 2;
+            const theta = Math.random() * Math.PI;
+            
+            // Create oval brain shape
+            let r = 0.65 + Math.random() * 0.15;
+            let x = Math.sin(theta) * Math.cos(phi) * r * 0.7 * signX;
+            let y = Math.sin(theta) * Math.sin(phi) * r + 0.2;
+            let z = Math.cos(theta) * r * 0.9;
+            
+            // Add brain-like undulations
+            const folds = Math.sin(phi * 8) * Math.sin(theta * 6) * 0.05;
+            x += folds * signX;
+            y += folds * 0.5;
+            z += folds;
+            
+            // Flatten the bottom
+            if (y < -0.2) {
+              y = -0.2 + (y + 0.2) * 0.5;
+            }            // Create node
+            const nodeSize = 0.035 + Math.random() * 0.025;
+            const nodeGeometry = new THREE.SphereGeometry(nodeSize, 12, 12);
+            const nodeMaterial = new THREE.MeshBasicMaterial({ 
+              color: hemisphereData.color,
+              transparent: true,
+              opacity: 0.9 + Math.random() * 0.1
+            });
+            
+            const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+            node.position.set(x, y, z);
+            
+            nodes.push({
+              mesh: node,
+              position: { x, y, z },
+              region: side + 'Hemisphere',
+              activity: Math.random(),
+              isSurface: true
+            });
+            
+            brainGroup.add(node);
+          }
+          
+          return nodes;
+        }
+        
+        // Create nodes for left and right hemispheres and cerebellum
+        const leftNodes = generateHemisphereNodes('left', brainStructure.leftHemisphere);
+        const rightNodes = generateHemisphereNodes('right', brainStructure.rightHemisphere);
+        
+        // Create cerebellum
+        for (let i = 0; i < brainStructure.cerebellum.density; i++) {
+          const phi = Math.random() * Math.PI * 2;
+          const theta = Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.7;
+          const r = 0.35 + Math.random() * 0.1;
+          
+          let x = Math.sin(theta) * Math.cos(phi) * r;
+          let y = brainStructure.cerebellum.center.y + Math.sin(theta) * Math.sin(phi) * r * 0.6;
+          let z = brainStructure.cerebellum.center.z - Math.cos(theta) * r * 0.8;
+          
+          // Add cerebellum folding
+          const folds = Math.sin(phi * 12) * 0.05;
+          x += folds;
+          y += folds * 0.2;          const nodeSize = 0.025 + Math.random() * 0.020;
+          const nodeGeometry = new THREE.SphereGeometry(nodeSize, 10, 10);
+          const nodeMaterial = new THREE.MeshBasicMaterial({ 
+            color: brainStructure.cerebellum.color,
+            transparent: true,
+            opacity: 0.8 + Math.random() * 0.2
+          });
+          
+          const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+          node.position.set(x, y, z);
+          
+          allNodes.push({
+            mesh: node,
+            position: { x, y, z },
+            region: 'cerebellum',
+            activity: Math.random(),
+            isSurface: true
+          });
+          
+          brainGroup.add(node);
+        }
+        
+        // Create brain stem
+        for (let i = 0; i < brainStructure.brainStem.density; i++) {
+          const r = 0.1 + Math.random() * 0.1;
+          const angle = Math.random() * Math.PI * 2;
+          const height = -0.4 - Math.random() * 0.6;
+          
+          const x = Math.cos(angle) * r;
+          const y = height;
+          const z = Math.sin(angle) * r;          const nodeSize = 0.022 + Math.random() * 0.015;
+          const nodeGeometry = new THREE.SphereGeometry(nodeSize, 10, 10);
+          const nodeMaterial = new THREE.MeshBasicMaterial({ 
+            color: brainStructure.brainStem.color,
+            transparent: true,
+            opacity: 0.8 + Math.random() * 0.2
+          });
+          
+          const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+          node.position.set(x, y, z);
+          
+          allNodes.push({
+            mesh: node,
+            position: { x, y, z },
+            region: 'brainStem',
+            activity: Math.random(),
+            isSurface: true
+          });
+          
+          brainGroup.add(node);
+        }        // Add junction nodes
+        brainStructure.junctions.forEach(junction => {
+          const nodeSize = 0.050 + Math.random() * 0.025;
+          const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
+          const nodeMaterial = new THREE.MeshBasicMaterial({ 
+            color: junction.color,
+            transparent: true,
+            opacity: 0.8
+          });
+          
+          const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+          node.position.set(junction.x, junction.y, junction.z);
+          
+          allNodes.push({
+            mesh: node,
+            position: { x: junction.x, y: junction.y, z: junction.z },
+            region: 'junction',
+            activity: 0.8,
+            isJunction: true
+          });
+          
+          brainGroup.add(node);
+        });
+        
+        return [...leftNodes, ...rightNodes];
+      }
+      
+      // Create surface nodes
+      const surfaceNodes = createBrainSurface();
+      allNodes.push(...surfaceNodes);
+      
+      // Create connections between nodes to form brain structure
+      const connections: { line: Line<BufferGeometry<NormalBufferAttributes>, LineBasicMaterial, Object3DEventMap>; nodeA: number; nodeB: number; baseOpacity: number; }[] = [];
+      
+      // Create realistic connection patterns
+      function createConnections() {
+        // Create interhemispheric connections (corpus callosum)
+        const leftHemisphereNodes = allNodes.filter(node => node.region === 'leftHemisphere');
+        const rightHemisphereNodes = allNodes.filter(node => node.region === 'rightHemisphere');        // Corpus callosum connections (center connections between hemispheres)
+        for (let i = 0; i < 80; i++) {
+          const leftIndex = Math.floor(Math.random() * leftHemisphereNodes.length);
+          const rightIndex = Math.floor(Math.random() * rightHemisphereNodes.length);
+          
+          const leftNode = leftHemisphereNodes[leftIndex];
+          const rightNode = rightHemisphereNodes[rightIndex];
+            // Only connect nodes that are in the middle section of the brain
+          if (Math.abs(leftNode.position.z) < 0.3 && Math.abs(rightNode.position.z) < 0.3) {
+            createConnectionBetweenNodes(leftNode, rightNode, 0xFFFFFF, 1.0);
+          }
+        }
+        
+        // Create surface connections within same hemisphere (short-range)
+        surfaceNodes.forEach((nodeA, i) => {
+          const sameHemisphereNodes = surfaceNodes.filter(
+            node => node.region === nodeA.region && node !== nodeA
+          );          // Connect to 4-8 nearby nodes
+          const connectionsCount = 4 + Math.floor(Math.random() * 5);
+          
+          // Sort by distance to find closest nodes
+          const sortedByDistance = sameHemisphereNodes
+            .map(nodeB => {
+              const dist = Math.sqrt(
+                Math.pow(nodeB.position.x - nodeA.position.x, 2) + 
+                Math.pow(nodeB.position.y - nodeA.position.y, 2) + 
+                Math.pow(nodeB.position.z - nodeA.position.z, 2)
+              );
+              return { node: nodeB, distance: dist };
+            })
+            .filter(item => item.distance < 0.4) // Only connect nearby nodes
+            .sort((a, b) => a.distance - b.distance);
+          
+          // Connect to closest nodes
+          for (let j = 0; j < Math.min(connectionsCount, sortedByDistance.length); j++) {
+            const hemisphereColor = nodeA.region === 'leftHemisphere' ? 
+              colors.leftHemisphere : colors.rightHemisphere;            createConnectionBetweenNodes(
+              nodeA, 
+              sortedByDistance[j].node, 
+              hemisphereColor,
+              1.0
+            );
+          }
+        });
+        
+        // Connect cerebellum nodes
+        const cerebellumNodes = allNodes.filter(node => node.region === 'cerebellum');        cerebellumNodes.forEach((nodeA, i) => {
+          // Connect to 2-4 nearby cerebellum nodes
+          const nearbyNodes = cerebellumNodes
+            .filter(node => node !== nodeA)
+            .sort((a, b) => {
+              const distA = Math.sqrt(
+                Math.pow(a.position.x - nodeA.position.x, 2) + 
+                Math.pow(a.position.y - nodeA.position.y, 2) + 
+                Math.pow(a.position.z - nodeA.position.z, 2)
+              );
+              const distB = Math.sqrt(
+                Math.pow(b.position.x - nodeA.position.x, 2) + 
+                Math.pow(b.position.y - nodeA.position.y, 2) + 
+                Math.pow(b.position.z - nodeA.position.z, 2)
+              );
+              return distA - distB;
+            });          const connectionsCount = 3 + Math.floor(Math.random() * 4);
+          
+          for (let j = 0; j < Math.min(connectionsCount, nearbyNodes.length); j++) {
+            if (Math.random() < 0.9) {
+              createConnectionBetweenNodes(nodeA, nearbyNodes[j], colors.stem, 0.8);
+            }
+          }
+        });
+        
+        // Connect brain stem nodes
+        const brainStemNodes = allNodes.filter(node => node.region === 'brainStem');
+        brainStemNodes.forEach((nodeA, i) => {
+          if (i % 2 === 0) { // Only connect some nodes to avoid overcrowding
+            const nearNode = brainStemNodes
+              .filter(node => node !== nodeA)
+              .sort((a, b) => {
+                const distA = Math.abs(a.position.y - nodeA.position.y);
+                const distB = Math.abs(b.position.y - nodeA.position.y);
+                return distA - distB;
+              })[0];            if (nearNode) {
+              createConnectionBetweenNodes(nodeA, nearNode, colors.stem, 0.8);
+            }
+          }
+        });
+        
+        // Connect junction nodes to others
+        const junctionNodes = allNodes.filter(node => node.isJunction);
+        junctionNodes.forEach(junction => {
+          // Connect junctions to both hemispheres
+          [leftHemisphereNodes, rightHemisphereNodes].forEach((hemisphereNodes, idx) => {
+            // Find nodes in hemisphere that are close to the junction
+            const closeNodes = hemisphereNodes.filter(node => {
+              const dist = Math.sqrt(
+                Math.pow(node.position.x - junction.position.x, 2) + 
+                Math.pow(node.position.y - junction.position.y, 2) + 
+                Math.pow(node.position.z - junction.position.z, 2)
+              );
+              return dist < 0.7;
+            });
+              // Connect to multiple nodes in each hemisphere
+            const connectCount = 8 + Math.floor(Math.random() * 7);
+            for (let i = 0; i < Math.min(connectCount, closeNodes.length); i++) {
+              const randomIndex = Math.floor(Math.random() * closeNodes.length);
+              const connectColor = idx === 0 ? colors.leftHemisphere : colors.rightHemisphere;
+              createConnectionBetweenNodes(junction, closeNodes[randomIndex], connectColor, 1.0);
+            }
+          });
+            // Connect lower junction to cerebellum
+          if (junction.position.y < 0) {
+            const cerebellumNodes = allNodes.filter(node => node.region === 'cerebellum');
+            const connectCount = 5 + Math.floor(Math.random() * 6);
+            for (let i = 0; i < Math.min(connectCount, cerebellumNodes.length); i++) {
+              const randomIndex = Math.floor(Math.random() * cerebellumNodes.length);
+              createConnectionBetweenNodes(junction, cerebellumNodes[randomIndex], colors.stem, 0.8);
+            }
+          }
+        });
+      }
+      
+      // Helper function to create connections between nodes
+      function createConnectionBetweenNodes(nodeA: BrainNode, nodeB: BrainNode, color: number, opacity = 0.5) {
+        const connectionGeometry = new THREE.BufferGeometry();
+        
+        // Add some curvature for more realistic pathways
+        const midPoint = new THREE.Vector3(
+          (nodeA.position.x + nodeB.position.x) / 2,
+          (nodeA.position.y + nodeB.position.y) / 2 + (Math.random() - 0.5) * 0.1,
+          (nodeA.position.z + nodeB.position.z) / 2 + (Math.random() - 0.5) * 0.1
+        );
+        
+        // Create curved connection using quadratic curve
+        const curve = new THREE.QuadraticBezierCurve3(
+          new THREE.Vector3(nodeA.position.x, nodeA.position.y, nodeA.position.z),
+          midPoint,
+          new THREE.Vector3(nodeB.position.x, nodeB.position.y, nodeB.position.z)
+        );
+        
+        const points = curve.getPoints(10);
+        connectionGeometry.setFromPoints(points);        const connectionMaterial = new THREE.LineBasicMaterial({ 
+          color: color,
+          transparent: true,
+          opacity: 0.25 + Math.random() * 0.35 * opacity,
+          linewidth: 3
+        });
+        
+        const connection = new THREE.Line(connectionGeometry, connectionMaterial);
+        
+        const nodeAIndex = allNodes.indexOf(nodeA);
+        const nodeBIndex = allNodes.indexOf(nodeB);
+        
+        if (nodeAIndex !== -1 && nodeBIndex !== -1) {
+          connections.push({
+            line: connection,
+            nodeA: nodeAIndex,
+            nodeB: nodeBIndex,
+            baseOpacity: connectionMaterial.opacity
+          });
+          brainGroup.add(connection);
+        }
+      }
+      
+      // Create all connections
+      createConnections();
+        // Add ambient lighting for better visibility
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
+      scene.add(ambientLight);
+      
+      // Add directional light
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+      directionalLight.position.set(1, 1, 1);
+      scene.add(directionalLight);
+      
+      scene.add(brainGroup);
+      
+      // Animation data
+      let frame = 0;
+      let animationId: number;
+      
+      // Animation loop with neural activity simulation
+      function animate() {
+        animationId = requestAnimationFrame(animate);
+        frame += 0.01;
+        
+        // Gentle rotation
+        brainGroup.rotation.y = frame * 0.1;
+        brainGroup.rotation.z = Math.sin(frame * 0.2) * 0.04;
+        
+        // Simulate neural activity waves
+        const waveTime = frame * 1.5;
+        
+        // Two wave sources, one in each hemisphere
+        const leftWaveSource = { x: -0.4, y: 0.1, z: 0 };
+        const rightWaveSource = { x: 0.4, y: 0.1, z: 0 };
+        
+        allNodes.forEach((nodeData, index) => {
+          if (!nodeData.isJunction) { // Regular nodes
+            // Update activity level more naturally
+            nodeData.activity += (Math.random() - 0.5) * 0.05;
+            nodeData.activity = Math.max(0.1, Math.min(1, nodeData.activity));
+            
+            // Calculate distance from wave sources
+            let distFromLeft = Math.sqrt(
+              Math.pow(nodeData.position.x - leftWaveSource.x, 2) +
+              Math.pow(nodeData.position.y - leftWaveSource.y, 2) +
+              Math.pow(nodeData.position.z - leftWaveSource.z, 2)
+            );
+            
+            let distFromRight = Math.sqrt(
+              Math.pow(nodeData.position.x - rightWaveSource.x, 2) +
+              Math.pow(nodeData.position.y - rightWaveSource.y, 2) +
+              Math.pow(nodeData.position.z - rightWaveSource.z, 2)
+            );
+            
+            // Wave effect
+            let leftWave = Math.sin(waveTime - distFromLeft * 5) * 0.5 + 0.5;
+            let rightWave = Math.sin(waveTime + Math.PI/2 - distFromRight * 5) * 0.5 + 0.5;
+            
+            // Apply wave based on hemispheres
+            let waveEffect = 0;
+            if (nodeData.region === 'leftHemisphere') {
+              waveEffect = leftWave;
+            } else if (nodeData.region === 'rightHemisphere') {
+              waveEffect = rightWave;
+            } else {
+              waveEffect = Math.max(leftWave * 0.5, rightWave * 0.5);
+            }
+            
+            // Apply wave to node appearance
+            const activity = 0.3 + nodeData.activity * 0.3 + waveEffect * 0.4;
+            nodeData.mesh.material.opacity = Math.max(0.2, activity);
+            
+            // Pulse effect
+            const scale = 0.9 + nodeData.activity * 0.2 + waveEffect * 0.1;
+            nodeData.mesh.scale.setScalar(scale);
+            
+          } else {
+            // Junction nodes pulsate more dramatically
+            const junctionPulse = 0.7 + Math.sin(waveTime * 2) * 0.3;
+            nodeData.mesh.material.opacity = junctionPulse;
+            nodeData.mesh.scale.setScalar(0.9 + Math.sin(waveTime * 3) * 0.2);
+          }
+        });
+        
+        // Animate connections based on neural activity
+        connections.forEach((conn, index) => {
+          const nodeA = allNodes[conn.nodeA];
+          const nodeB = allNodes[conn.nodeB];
+          
+          if (nodeA && nodeB) {
+            const avgActivity = (nodeA.activity + nodeB.activity) / 2;
+            
+            // Create traveling pulse effect along connections
+            let pulsePhase = (waveTime * 2 + index * 0.3) % (Math.PI * 2);
+            let pulseIntensity = Math.sin(pulsePhase) * avgActivity;
+            
+            // Make important connections more visible
+            let importanceFactor = (nodeA.isJunction || nodeB.isJunction) ? 2 : 1;
+            
+            conn.line.material.opacity = conn.baseOpacity * (1 + pulseIntensity) * importanceFactor;
+          }
+        });
+        
+        // Render
+        renderer.render(scene, camera);
+      }
+      
+      animate();
+      
+      // Handle resize
+      function handleResize() {
+        if (container) {
+          const width = container.clientWidth;
+          const height = container.clientHeight;
+          
+          if (width > 0 && height > 0) {
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+          }
+        }
+      }
+      
+      window.addEventListener('resize', handleResize);
+      
+      // Use a ResizeObserver for container size changes
+      let resizeObserver: ResizeObserver;
+      if ('ResizeObserver' in window) {
+        resizeObserver = new ResizeObserver(handleResize);
+        resizeObserver.observe(container);
+      }
+      
+      // Cleanup function for when component is removed
+      const cleanup = () => {
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+        window.removeEventListener('resize', handleResize);
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+        }
+        // Clean up Three.js resources
+        scene.clear();
+        renderer.dispose();
+      };
+      
+      // Store cleanup function for potential later use
+      (window as any).brainModelCleanup = cleanup;
+      
+      console.log('Brain model setup complete');
+    } catch (error) {
+      console.error('Error setting up brain model:', error);
+    }
+  });
+</script>
+
+<style>
+  .brain-model {
+    display: block;
+    overflow: hidden;
+    border-radius: 8px;
+  }
+  
+  .brain-model canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+</style>

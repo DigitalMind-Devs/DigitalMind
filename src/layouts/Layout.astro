@@ -9,16 +9,36 @@ const { title = "DigitalMind - Conectamos tu mente al futuro digital" } = Astro.
 ---
 
 <!doctype html>
-<html lang="es">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="generator" content={Astro.generator} />
-		<title>{title}</title>
-	</head>
-	<body class="m-0 bg-[#0e0e1a] text-white font-[Poppins,sans-serif]">
-        <slot />
+<html lang="es" class="scroll-smooth">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <meta name="generator" content={Astro.generator} />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <title>{title}</title>
+    </head>
+    <body class="m-0 bg-[#0e0e1a] text-white font-[Poppins,sans-serif] relative">
+        <!-- Main content -->
+        <div class="content relative z-10">
+            <slot />
+        </div>
+
+        <!-- Ensure Three.js is properly loaded -->
+        <script>
+          // Check if Three.js is available and properly loaded
+          document.addEventListener('DOMContentLoaded', async () => {
+            try {
+              // Pre-load Three.js module to ensure it's available
+              const THREE = await import('three');
+              console.log('Three.js loaded successfully:', THREE.REVISION);
+            } catch (e) {
+              console.error('Error loading Three.js:', e);
+            }
+          });
+        </script>
     </body>
 </html>
 
@@ -33,5 +53,10 @@ const { title = "DigitalMind - Conectamos tu mente al futuro digital" } = Astro.
   
   .duration-600 {
     transition-duration: 600ms;
+  }
+  
+  /* Add glow effect for Three.js elements */
+  canvas {
+    filter: saturate(1.2);
   }
 </style>

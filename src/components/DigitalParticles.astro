@@ -1,0 +1,219 @@
+---
+interface Props {
+  containerId: string;
+  height?: string;
+  interactive?: boolean;
+}
+
+const { 
+  containerId, 
+  height = "400px",
+  interactive = true
+} = Astro.props;
+---
+
+<div id={containerId} class="digital-particles w-full" style={`height: ${height}; position: relative;`}></div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Get container from DOM
+    const container = document.querySelector('.digital-particles');
+    if (!container) {
+      console.error('Digital particles container not found');
+      return;
+    }
+    
+    const THREE = await import('three');
+    
+    // Create scene
+    const scene = new THREE.Scene();
+    
+    // Create camera
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      container.clientWidth / container.clientHeight,
+      0.1,
+      1000
+    );
+    camera.position.z = 5;
+    
+    // Create renderer
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      alpha: true 
+    });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+    
+    // Create binary particles system
+    const particlesCount = 500;
+    const particlesGroup = new THREE.Group();
+    
+    // Digital particles
+    for (let i = 0; i < particlesCount; i++) {
+      // Create text geometry for 0's and 1's
+      const textValue = Math.random() > 0.5 ? "0" : "1";
+      
+      // Use simple planes with textures instead of text geometries for better performance
+      const planeSize = 0.1 + Math.random() * 0.1;
+      const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
+      const planeMaterial = new THREE.MeshBasicMaterial({
+        color: Math.random() > 0.7 ? 0x00ff99 : 0x7fffd4,
+        transparent: true,
+        opacity: 0.2 + Math.random() * 0.8,
+        side: THREE.DoubleSide
+      });
+      
+      const particle = new THREE.Mesh(planeGeometry, planeMaterial);
+      
+      // Position
+      particle.position.x = (Math.random() - 0.5) * 10;
+      particle.position.y = (Math.random() - 0.5) * 10;
+      particle.position.z = (Math.random() - 0.5) * 10;
+      
+      // Store original position for animation
+      particle.userData.originalPosition = {
+        x: particle.position.x,
+        y: particle.position.y,
+        z: particle.position.z
+      };
+      
+      // Animation parameters
+      particle.userData.speed = 0.01 + Math.random() * 0.02;
+      particle.userData.amplitude = 0.1 + Math.random() * 0.3;
+      particle.userData.offset = Math.random() * Math.PI * 2;
+      
+      particlesGroup.add(particle);
+    }
+    
+    scene.add(particlesGroup);
+    
+    // Mouse interaction
+    const mouse = {
+      x: 0,
+      y: 0,
+      isActive: false
+    };
+    
+    const interactive = true; // Default to true
+    
+    if (interactive) {
+      container.addEventListener('mousemove', (event) => {
+        const mouseEvent = event as MouseEvent;
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((mouseEvent.clientX - rect.left) / container.clientWidth) * 2 - 1;
+        mouse.y = -((mouseEvent.clientY - rect.top) / container.clientHeight) * 2 + 1;
+        mouse.isActive = true;
+      });
+      
+      container.addEventListener('mouseleave', () => {
+        mouse.isActive = false;
+      });
+    }
+    
+    // Animation
+    const clock = new THREE.Clock();
+    let animationId: number;
+    
+    const animate = () => {
+      animationId = requestAnimationFrame(animate);
+      
+      const elapsedTime = clock.getElapsedTime();
+      
+      // Animate particles
+      particlesGroup.children.forEach((particle, i) => {
+        const { originalPosition, speed, amplitude, offset } = particle.userData;
+        
+        // Regular floating animation
+        particle.position.y = originalPosition.y + Math.sin(elapsedTime * speed + offset) * amplitude;
+        
+        // Subtle rotation
+        particle.rotation.x = elapsedTime * 0.2 + i;
+        particle.rotation.y = elapsedTime * 0.3 + i;
+        
+        // Interactive mouse effect if enabled
+        if (interactive && mouse.isActive) {
+          // Calculate distance to mouse
+          const mouseVector = new THREE.Vector3(mouse.x * 5, mouse.y * 5, 0);
+          const distance = particle.position.distanceTo(mouseVector);
+          
+          if (distance < 2) {
+            // Push particles away from mouse
+            const direction = new THREE.Vector3()
+              .subVectors(particle.position, mouseVector)
+              .normalize()
+              .multiplyScalar(0.05 / (distance + 0.1));
+            
+            particle.position.add(direction);
+          } else {
+            // Slowly return to original position
+            particle.position.x += (originalPosition.x - particle.position.x) * 0.02;
+            particle.position.z += (originalPosition.z - particle.position.z) * 0.02;
+          }
+        } else {
+          // Slowly return to original position when mouse is not active
+          particle.position.x += (originalPosition.x - particle.position.x) * 0.02;
+          particle.position.z += (originalPosition.z - particle.position.z) * 0.02;
+        }
+      });
+      
+      // Rotate entire particle group slightly
+      particlesGroup.rotation.y = elapsedTime * 0.05;
+      
+      renderer.render(scene, camera);
+    };
+    
+    animate();
+    
+    // Handle resize
+    const handleResize = () => {
+      if (container) {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    // Observer to handle container size changes
+    let resizeObserver: ResizeObserver | undefined;
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(handleResize);
+      resizeObserver.observe(container);
+    }
+    
+    // Cleanup function for when component is removed
+    const cleanup = () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      // Clean up Three.js resources
+      scene.clear();
+      renderer.dispose();
+    };
+    
+    // Store cleanup function for potential later use
+    (window as any).digitalParticlesCleanup = cleanup;
+    
+    console.log('Digital particles setup complete');
+  });
+</script>
+
+<style>
+  .digital-particles {
+    display: block;
+    overflow: hidden;
+  }
+  
+  .digital-particles canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+</style>
